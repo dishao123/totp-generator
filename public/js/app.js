@@ -10,7 +10,6 @@ function truncateTo(str, digits) {
   if (str.length <= digits) {
     return str;
   }
-
   return str.slice(-digits);
 }
 
@@ -22,92 +21,71 @@ function parseURLSearch(search) {
     value = isNaN(Number(value)) ? value : Number(value);
     return (q[key] = value, q);
   }, {});
-
   return queryParams;
 }
 
-const app = Vue.createApp({
-  data() {
-    return {
-      secret_key: 'JBSWY3DPEHPK3PXP',
-      digits: 6,
-      period: 30,
-      algorithm: 'SHA1',
-      updatingIn: 30,
-      token: null,
-      prev_token: null,
-      next_token: null,
-      clipboardButton: null,
-    };
-  },
+document.addEventListener('DOMContentLoaded', function () {
+  let secretKey = 'JBSWY3DPEHPK3PXP';
+  let digits = 6;
+  let period = 30;
+  let algorithm = 'SHA1';
+  let updatingIn = 30;
+  let token = null;
+  let prevToken = null;
+  let nextToken = null;
 
-  mounted: function () {
-    this.getKeyFromUrl();
-    this.getQueryParameters()
-    this.update();
+  function update() {
+    updatingIn = period - (getCurrentSeconds() % period);
 
-    this.intervalHandle = setInterval(this.update, 1000);
+    const totp = new OTPAuth.TOTP({
+      algorithm: algorithm,
+      digits: digits,
+      period: period,
+      secret: OTPAuth.Secret.fromBase32(stripSpaces(secretKey)),
+    });
 
-    this.clipboardButton = new ClipboardJS('#clipboard-button');
-  },
+    totp.timestamp = Date.now();
+    token = truncateTo(totp.generate(), digits);
 
-  destroyed: function () {
-    clearInterval(this.intervalHandle);
-  },
+    totp.timestamp = Date.now() - period * 1000;
+    prevToken = truncateTo(totp.generate(), digits);
 
-  computed: {
-    totp: function () {
-      return new OTPAuth.TOTP({
-        algorithm: this.algorithm,
-        digits: this.digits,
-        period: this.period,
-        secret: OTPAuth.Secret.fromBase32(stripSpaces(this.secret_key)),
-      });
-    }
-  },
+    totp.timestamp = Date.now() + period * 1000;
+    nextToken = truncateTo(totp.generate(), digits);
 
-  methods: {
-    update: function () {
-      
-      this.updatingIn = this.period - (getCurrentSeconds() % this.period);
+    document.getElementById('token').textContent = token;
+    document.getElementById('prev-token').textContent = prevToken;
+    document.getElementById('next-token').textContent = nextToken;
+    document.getElementById('updating-in').textContent = updatingIn;
+  }
 
-      this.totp.timestamp = Date.now();
-      this.token = truncateTo(this.totp.generate(), this.digits);
-      
-      this.totp.timestamp = Date.now() - this.period * 1000;
-      this.prev_token = truncateTo(this.totp.generate(), this.period);
-      
-      this.totp.timestamp = Date.now() + this.period * 1000;
-      this.next_token = truncateTo(this.totp.generate(), this.period);
-    },
-
-    getKeyFromUrl: function () {
-      const key = document.location.hash.replace(/[#\/]+/, '');
-
-      if (key.length > 0) {
-        this.secret_key = key;
-      }
-    },
-    getQueryParameters: function () {
-      const queryParams = parseURLSearch(window.location.search);
-
-      if (queryParams.key) {
-        this.secret_key = queryParams.key;
-      }
-
-      if (queryParams.digits) {
-        this.digits = queryParams.digits;
-      }
-
-      if (queryParams.period) {
-        this.period = queryParams.period;
-      }
-
-      if (queryParams.algorithm) {
-        this.algorithm = queryParams.algorithm;
-      }
+  function getKeyFromUrl() {
+    const key = document.location.hash.replace(/[#\/]+/, '');
+    if (key.length > 0) {
+      secretKey = key;
     }
   }
-});
 
-app.mount('#app');
+  function getQueryParameters() {
+    const queryParams = parseURLSearch(window.location.search);
+    if (queryParams.key) {
+      secretKey = queryParams.key;
+    }
+    if (queryParams.digits) {
+      digits = queryParams.digits;
+    }
+    if (queryParams.period) {
+      period = queryParams.period;
+    }
+    if (queryParams.algorithm) {
+      algorithm = queryParams.algorithm;
+    }
+  }
+
+  getKeyFromUrl();
+  getQueryParameters();
+  update();
+  setInterval(update, 1000);
+
+  const clipboardButton = new ClipboardJS('#clipboard-button');
+});
